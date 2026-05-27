@@ -20,14 +20,16 @@ fi
 # ↓ 监听端口，默认 10086，可通过环境变量 PORT 修改
 INBOUND_PORT="${PORT:-10086}"
 
-# ↓ WebSocket 路径，默认 /laoluo，可通过环境变量 WS_PATH 修改
-WS_PATH="${WS_PATH:-/laoluo}"
+# ↓ WebSocket 路径，默认 /?ed=2048，可通过环境变量 WS_PATH 修改
+WS_PATH="${WS_PATH:-/?ed=2048}"
 
-# 自动识别各平台域名（优先级从高到低）
+# 自动识别各平台域名和平台名称
 if [ -n "${VMESS_HOST:-}" ]; then
   HOST="$VMESS_HOST"
+  PLATFORM=""
 elif [ -n "${DOMAIN:-}" ]; then
   HOST="$DOMAIN"
+  PLATFORM=""
 elif [ -n "${VCAP_APPLICATION:-}" ]; then
   HOST="$(echo "$VCAP_APPLICATION" | jq -r '.application_uris[0] // empty' 2>/dev/null || true)"
   if [ -z "$HOST" ]; then
@@ -35,41 +37,55 @@ elif [ -n "${VCAP_APPLICATION:-}" ]; then
       | grep -oE '"application_uris":\[[^]]+\]' \
       | sed -n 's/.*\[\s*"\([^"]\+\)".*/\1/p' | head -n1 || true)"
   fi
+  PLATFORM="CloudFoundry"
 elif [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
   HOST="$RAILWAY_PUBLIC_DOMAIN"
+  PLATFORM="Railway"
 elif [ -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]; then
   HOST="$RENDER_EXTERNAL_HOSTNAME"
+  PLATFORM="Render"
 elif [ -n "${ZEABUR_DOMAIN:-}" ]; then
   HOST="$ZEABUR_DOMAIN"
+  PLATFORM="Zeabur"
 elif [ -n "${KOYEB_PUBLIC_DOMAIN:-}" ]; then
   HOST="$KOYEB_PUBLIC_DOMAIN"
+  PLATFORM="Koyeb"
 else
   HOST="$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || \
           curl -s --max-time 5 https://ip.sb 2>/dev/null || \
           echo 'your-domain.com')"
+  PLATFORM=""
 fi
 
 # 获取 IP 国家简称
-COUNTRY="$(curl -s --max-time 5 https://ipapi.co/country 2>/dev/null || \
-           curl -s --max-time 5 https://ip.sb/geoip 2>/dev/null | grep -o '"country_code":"[^"]*"' | cut -d'"' -f4 || \
-           echo '')"
+COUNTRY="$(curl -s --max-time 5 https://ipapi.co/country 2>/dev/null || echo '')"
 
-# 自动识别平台名称并组合国家前缀
+# 组合节点名称
 if [ -n "${PS_NAME:-}" ]; then
   # ↓ 手动指定节点名称，部署时传入 PS_NAME 环境变量
-  PS_NAME="${COUNTRY:+${COUNTRY}-}${PS_NAME}"
-elif [ -n "${VCAP_APPLICATION:-}" ]; then
-  PS_NAME="${COUNTRY:+${COUNTRY}-}CloudFoundry"
-elif [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
-  PS_NAME="${COUNTRY:+${COUNTRY}-}Railway"
-elif [ -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]; then
-  PS_NAME="${COUNTRY:+${COUNTRY}-}Render"
-elif [ -n "${ZEABUR_DOMAIN:-}" ]; then
-  PS_NAME="${COUNTRY:+${COUNTRY}-}Zeabur"
-elif [ -n "${KOYEB_PUBLIC_DOMAIN:-}" ]; then
-  PS_NAME="${COUNTRY:+${COUNTRY}-}Koyeb"
+  PS_NAME="$PS_NAME"
+elif [ -n "$PLATFORM" ]; then
+  # 识别到平台：国家-平台名
+  PS_NAME="${COUNTRY:+${COUNTRY}-}${PLATFORM}"
 else
-  PS_NAME="${COUNTRY:+${COUNTRY}-}mous"
+  # 识别不到平台：国家-ASN 兜底
+  ASN_ORG="$(curl -s --max-time 5 https://ipapi.co/org 2>/dev/null || echo '')"
+  # 清理格式：去掉 AS12345 前缀和 Inc./LLC/Ltd./Corp. 等后缀，截断超过 20 字符
+  ASN_ORG="$(echo "$ASN_ORG" \
+    | sed 's/^AS[0-9]* //' \
+    | sed 's/,\? *Inc\.$//' \
+    | sed 's/,\? *LLC\.*//' \
+    | sed 's/,\? *Ltd\.*//' \
+    | sed 's/,\? *Corp\.*//' \
+    | sed 's/ *$//' \
+    | cut -c1-20)"
+  if [ -n "$COUNTRY" ] && [ -n "$ASN_ORG" ]; then
+    PS_NAME="${COUNTRY}-${ASN_ORG}"
+  elif [ -n "$COUNTRY" ]; then
+    PS_NAME="${COUNTRY}-mous"
+  else
+    PS_NAME="mous"
+  fi
 fi
 
 # 生成 v2ray 配置
