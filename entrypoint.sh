@@ -7,7 +7,7 @@ export LC_ALL="${LC_ALL:-C.UTF-8}"
 
 UUID_FILE="/etc/uuid.txt"
 
-# UUID 管理
+# UUID 管理（可通过环境变量 UUID 注入，否则自动生成）
 if [ -n "${UUID:-}" ]; then
   echo "$UUID" > "$UUID_FILE"
 elif [ -f "$UUID_FILE" ]; then
@@ -17,16 +17,62 @@ else
   echo "$UUID" > "$UUID_FILE"
 fi
 
-# 端口与 WS 路径
+# ↓ 监听端口，默认 10086，可通过环境变量 PORT 修改
 INBOUND_PORT="${PORT:-10086}"
-WS_PATH="${WS_PATH:-/fengyue}"
 
-# 域名
-VMESS_HOST="${VMESS_HOST:-}"
-DOMAIN="${DOMAIN:-}"
-HOST="${VMESS_HOST:-${DOMAIN:-}}"
-if [ -z "$HOST" ]; then
-  HOST="your-domain.com"
+# ↓ WebSocket 路径，默认 /laoluo，可通过环境变量 WS_PATH 修改
+WS_PATH="${WS_PATH:-/laoluo}"
+
+# 自动识别各平台域名（优先级从高到低）
+if [ -n "${VMESS_HOST:-}" ]; then
+  # 手动指定（最高优先级）
+  HOST="$VMESS_HOST"
+elif [ -n "${DOMAIN:-}" ]; then
+  # 手动指定域名
+  HOST="$DOMAIN"
+elif [ -n "${VCAP_APPLICATION:-}" ]; then
+  # Cloud Foundry（IBM Cloud、SAP BTP等）
+  HOST="$(echo "$VCAP_APPLICATION" | jq -r '.application_uris[0] // empty' 2>/dev/null || true)"
+  if [ -z "$HOST" ]; then
+    HOST="$(echo "$VCAP_APPLICATION" \
+      | grep -oE '"application_uris":\[[^]]+\]' \
+      | sed -n 's/.*\[\s*"\([^"]\+\)".*/\1/p' | head -n1 || true)"
+  fi
+elif [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
+  # Railway
+  HOST="$RAILWAY_PUBLIC_DOMAIN"
+elif [ -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]; then
+  # Render
+  HOST="$RENDER_EXTERNAL_HOSTNAME"
+elif [ -n "${ZEABUR_DOMAIN:-}" ]; then
+  # Zeabur
+  HOST="$ZEABUR_DOMAIN"
+elif [ -n "${KOYEB_PUBLIC_DOMAIN:-}" ]; then
+  # Koyeb
+  HOST="$KOYEB_PUBLIC_DOMAIN"
+else
+  # 自动获取公网 IP 兜底
+  HOST="$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || \
+          curl -s --max-time 5 https://ip.sb 2>/dev/null || \
+          echo 'your-domain.com')"
+fi
+
+# 自动识别平台名称
+if [ -n "${PS_NAME:-}" ]; then
+  # ↓ 手动指定节点名称（最高优先级），部署时传入 PS_NAME 环境变量
+  PS_NAME="$PS_NAME"
+elif [ -n "${VCAP_APPLICATION:-}" ]; then
+  PS_NAME="CloudFoundry"
+elif [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
+  PS_NAME="Railway"
+elif [ -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]; then
+  PS_NAME="Render"
+elif [ -n "${ZEABUR_DOMAIN:-}" ]; then
+  PS_NAME="Zeabur"
+elif [ -n "${KOYEB_PUBLIC_DOMAIN:-}" ]; then
+  PS_NAME="Koyeb"
+else
+  PS_NAME="mous"
 fi
 
 # 生成 v2ray 配置
@@ -53,7 +99,7 @@ EOF
 VMESS_JSON="$(cat <<EOT
 {
   "v": "2",
-  "ps": "SAP",
+  "ps": "${PS_NAME}",
   "add": "${HOST}",
   "port": "443",
   "id": "${UUID}",
