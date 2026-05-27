@@ -53,7 +53,7 @@ EOF
 VMESS_JSON="$(cat <<EOT
 {
   "v": "2",
-  "ps": "APP",
+  "ps": "SAP",
   "add": "${HOST}",
   "port": "443",
   "id": "${UUID}",
