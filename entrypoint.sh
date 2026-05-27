@@ -25,13 +25,10 @@ WS_PATH="${WS_PATH:-/laoluo}"
 
 # 自动识别各平台域名（优先级从高到低）
 if [ -n "${VMESS_HOST:-}" ]; then
-  # 手动指定（最高优先级）
   HOST="$VMESS_HOST"
 elif [ -n "${DOMAIN:-}" ]; then
-  # 手动指定域名
   HOST="$DOMAIN"
 elif [ -n "${VCAP_APPLICATION:-}" ]; then
-  # Cloud Foundry（IBM Cloud、SAP BTP等）
   HOST="$(echo "$VCAP_APPLICATION" | jq -r '.application_uris[0] // empty' 2>/dev/null || true)"
   if [ -z "$HOST" ]; then
     HOST="$(echo "$VCAP_APPLICATION" \
@@ -39,40 +36,40 @@ elif [ -n "${VCAP_APPLICATION:-}" ]; then
       | sed -n 's/.*\[\s*"\([^"]\+\)".*/\1/p' | head -n1 || true)"
   fi
 elif [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
-  # Railway
   HOST="$RAILWAY_PUBLIC_DOMAIN"
 elif [ -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]; then
-  # Render
   HOST="$RENDER_EXTERNAL_HOSTNAME"
 elif [ -n "${ZEABUR_DOMAIN:-}" ]; then
-  # Zeabur
   HOST="$ZEABUR_DOMAIN"
 elif [ -n "${KOYEB_PUBLIC_DOMAIN:-}" ]; then
-  # Koyeb
   HOST="$KOYEB_PUBLIC_DOMAIN"
 else
-  # 自动获取公网 IP 兜底
   HOST="$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || \
           curl -s --max-time 5 https://ip.sb 2>/dev/null || \
           echo 'your-domain.com')"
 fi
 
-# 自动识别平台名称
+# 获取 IP 国家简称
+COUNTRY="$(curl -s --max-time 5 https://ipapi.co/country 2>/dev/null || \
+           curl -s --max-time 5 https://ip.sb/geoip 2>/dev/null | grep -o '"country_code":"[^"]*"' | cut -d'"' -f4 || \
+           echo '')"
+
+# 自动识别平台名称并组合国家前缀
 if [ -n "${PS_NAME:-}" ]; then
-  # ↓ 手动指定节点名称（最高优先级），部署时传入 PS_NAME 环境变量
-  PS_NAME="$PS_NAME"
+  # ↓ 手动指定节点名称，部署时传入 PS_NAME 环境变量
+  PS_NAME="${COUNTRY:+${COUNTRY}-}${PS_NAME}"
 elif [ -n "${VCAP_APPLICATION:-}" ]; then
-  PS_NAME="CloudFoundry"
+  PS_NAME="${COUNTRY:+${COUNTRY}-}CloudFoundry"
 elif [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
-  PS_NAME="Railway"
+  PS_NAME="${COUNTRY:+${COUNTRY}-}Railway"
 elif [ -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]; then
-  PS_NAME="Render"
+  PS_NAME="${COUNTRY:+${COUNTRY}-}Render"
 elif [ -n "${ZEABUR_DOMAIN:-}" ]; then
-  PS_NAME="Zeabur"
+  PS_NAME="${COUNTRY:+${COUNTRY}-}Zeabur"
 elif [ -n "${KOYEB_PUBLIC_DOMAIN:-}" ]; then
-  PS_NAME="Koyeb"
+  PS_NAME="${COUNTRY:+${COUNTRY}-}Koyeb"
 else
-  PS_NAME="mous"
+  PS_NAME="${COUNTRY:+${COUNTRY}-}mous"
 fi
 
 # 生成 v2ray 配置
