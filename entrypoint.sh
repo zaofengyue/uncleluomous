@@ -19,7 +19,7 @@ fi
 
 # 端口与 WS 路径
 INBOUND_PORT="${PORT:-10086}"
-WS_PATH="${WS_PATH:-/laoluo}"
+WS_PATH="${WS_PATH:-/fengyue}"
 
 # 域名
 VMESS_HOST="${VMESS_HOST:-}"
@@ -53,7 +53,7 @@ EOF
 VMESS_JSON="$(cat <<EOT
 {
   "v": "2",
-  "ps": "mous",
+  "ps": "APP",
   "add": "${HOST}",
   "port": "443",
   "id": "${UUID}",
